@@ -5,6 +5,13 @@
       "headers": {
         "Authorization": "Bearer zsc_your_key_here"
       }
+    },
+    "lawn-ops-db": {
+      "command": "npx",
+      "args": ["-y", "easy-sqlite-mcp"],
+      "env": {
+        "SQLITE_PATH": "/ABSOLUTE/PATH/TO/lawn-ops/lawn-ops.db"
+      }
     }
   }
 }
