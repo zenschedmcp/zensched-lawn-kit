@@ -22,13 +22,18 @@ A copy-pasteable reference architecture for a 1–2 person lawn-mowing company u
 
 **Never duplicate:** Do not copy the live schedule, punches, or timesheets into SQLite. ZenSched is the source of truth for "what happened when."
 
-## Windows Setup
+## Setup (Windows & Mac)
+
+The architecture is the same on both OSes: ZenSched MCP for live field ops, local SQLite for CRM/billing. Only the Claude Desktop config path differs.
 
 ### 1. Add the MCP Server to Your AI Tool
 
 Copy `mcp.json.example` into your AI tool's MCP configuration:
 
-**For Claude Desktop** (`%APPDATA%\Claude\claude_desktop_config.json`):
+**Claude Desktop — Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+**Claude Desktop — Mac:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
 ```json
 {
   "mcpServers": {
@@ -40,9 +45,7 @@ Copy `mcp.json.example` into your AI tool's MCP configuration:
 }
 ```
 
-**For Cursor** (Settings → MCP Servers):
-- Use the same configuration structure
-- Or add via Cursor's MCP settings UI
+**Cursor (Windows & Mac):** Settings → MCP Servers — same JSON, or add via the MCP settings UI.
 
 ### 2. Get Your ZenSched API Key
 
@@ -58,12 +61,13 @@ Copy `.env.example` to `.env` and add your API key:
 ZENSCHED_API_KEY=zsc_your_actual_key_here
 ```
 
-Initialize the SQLite database:
+Initialize the SQLite database (needs [`sqlite3`](https://www.sqlite.org/download.html) on your PATH):
+
 ```bash
 sqlite3 lawn-ops.db < schema.sql
 ```
 
-Or on Windows:
+Windows CMD alternative:
 ```cmd
 type schema.sql | sqlite3 lawn-ops.db
 ```

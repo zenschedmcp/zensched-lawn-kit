@@ -15,8 +15,9 @@ Save the returned `zsc_` key.
 
 ## 2. Add MCP Server
 
-**Windows - Claude Desktop:**  
-Edit `%APPDATA%\Claude\claude_desktop_config.json`:
+**Claude Desktop — Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+**Claude Desktop — Mac:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 ```json
 {
@@ -29,8 +30,7 @@ Edit `%APPDATA%\Claude\claude_desktop_config.json`:
 }
 ```
 
-**Cursor:**  
-Settings → MCP Servers → Add the same config.
+**Cursor (Windows & Mac):** Settings → MCP Servers → same config.
 
 Restart your AI tool.
 
@@ -80,7 +80,7 @@ Worker gets a push notification. Done!
 
 ## Next Steps
 
-- Read `README.md` for full Windows setup
+- Read `README.md` for full Windows & Mac setup
 - Check `SKILL.md` for agent prompts
 - Review `example-workflow.md` for complete workflow
 
