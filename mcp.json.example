@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "zensched": {
+      "url": "https://mcp.zensched.com/mcp",
+      "headers": {
+        "Authorization": "Bearer zsc_your_key_here"
+      }
+    }
+  }
+}
