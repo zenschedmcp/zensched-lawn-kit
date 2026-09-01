@@ -1,292 +1,240 @@
-# Example ZenSched Lawn Operations Workflow
+# Example Workflow: What the AI Does Behind Each Request
 
-This document shows a complete tool-loop example: creating an organization, adding properties, inviting a worker, scheduling jobs, pulling timesheets, and drafting invoices.
+This shows the exact tool calls the agent makes for a first week of operation, following `SKILL.md`. The owner only types the quoted lines; everything else is the agent's work. Assumes setup from `QUICKSTART.md` is complete (both MCP servers configured, `schema.sql` loaded, `SKILL.md` given as instructions).
 
-## Initial Setup
+IDs and responses are illustrative.
 
-### 1. Get Your ZenSched Key
-
-```
-Tool: zensched_guide
-Result: Returns current onboarding instructions
-```
+## Session start (every session)
 
 ```
-Tool: account_create
-Parameters:
-  org_name: "Green Lawn Mowing Co"
-Result:
-  api_key: "zsc_1a2b3c4d5e6f..."
-  org_id: "org_abc123"
+sqlite_execute: PRAGMA foreign_keys = ON;
+sqlite_query:   SELECT key, value FROM settings;
+  → business_name = Green Lawn Mowing Co, timezone_offset = -05:00,
+    default_worker_id = NULL, default_shift_start = 09:00, default_shift_minutes = 60,
+    invoice_due_days = 14, invoice_prefix = INV
 ```
 
-**Action:** Save the `zsc_` key and add it to your MCP configuration. Restart your AI tool.
-
-### 2. Initialize Local Database
-
-```bash
-sqlite3 lawn-ops.db < schema.sql
-```
-
-## Adding Customer Properties
-
-### Customer 1: Alice Green
-
-```sql
-INSERT INTO customers (customer_name, contact_email, contact_phone, service_rate, service_frequency, next_service_date)
-VALUES ('Alice Green', 'alice@example.com', '555-0101', 45.00, 'biweekly', '2026-09-02');
-```
+## "My business is Green Lawn Mowing Co in Springfield, IL, Central time."
 
 ```
-Tool: location_create
-Parameters:
+sqlite_execute: UPDATE settings SET value = 'Green Lawn Mowing Co' WHERE key = 'business_name';
+sqlite_execute: UPDATE settings SET value = '-05:00' WHERE key = 'timezone_offset';
+```
+
+> Saved. I'll schedule everything in Central time (-05:00).
+
+## "Add a customer: Alice Green, alice@example.com, 555-0101, 123 Maple Street, Springfield IL 62701. $45 every two weeks, first cut 2026-09-02."
+
+```
+sqlite_execute:
+  INSERT INTO customers (customer_name, contact_email, contact_phone, service_rate, service_frequency, next_service_date)
+  VALUES ('Alice Green', 'alice@example.com', '555-0101', 45.00, 'biweekly', '2026-09-02');
+  → lastInsertRowid = 1
+
+sqlite_execute:
+  INSERT INTO properties (customer_id, address, city, state, zip)
+  VALUES (1, '123 Maple Street', 'Springfield', 'IL', '62701');
+  → lastInsertRowid = 1
+```
+
+Agent (first metered call this session, rule 8):
+
+> Creating Alice's location on ZenSched costs $0.05 for geocoding. If your account isn't funded yet you'll get a prompt for the $5 activation deposit. Go ahead?
+
+Owner: *"yes"*
+
+```
+location_create:
   address: "123 Maple Street, Springfield, IL 62701"
-  idempotency_key: "loc-alice-maple-123"
-Result:
+  idempotency_key: "loc-property-1"
+  → location_id: "loc_map123abc", lat: 39.7817, lng: -89.6501
+    billing: { meter: "geocode", units: 1, price: 0.05 }
+
+event_create:
+  name: "Lawn Mowing - 123 Maple Street"
   location_id: "loc_map123abc"
-  lat: 39.7817
-  lng: -89.6501
-  billing: { meter: "geocode", units: 1, price: 0.05 }
+  idempotency_key: "event-property-1"
+  → event_id: "evt_maple1"
+
+sqlite_execute:
+  UPDATE properties SET zensched_location_id = 'loc_map123abc', zensched_event_id = 'evt_maple1'
+  WHERE property_id = 1;
 ```
 
-```sql
-INSERT INTO properties (customer_id, address, city, state, zip, zensched_location_id)
-VALUES (1, '123 Maple Street', 'Springfield', 'IL', '62701', 'loc_map123abc');
-```
+> Added Alice Green, 123 Maple St, $45 biweekly, first cut Tue 9/2.
 
-### Customer 2: Bob Turner
+## "Add Bob Turner, bob@example.com, 555-0202, 456 Oak Avenue, Springfield IL 62702, $55 weekly, first cut 2026-09-03."
 
-```sql
-INSERT INTO customers (customer_name, contact_email, contact_phone, service_rate, service_frequency, next_service_date)
-VALUES ('Bob Turner', 'bob@example.com', '555-0202', 55.00, 'weekly', '2026-09-03');
-```
+Same pattern. The agent does not re-ask about the $0.05 (owner already approved geocoding this session).
 
 ```
-Tool: location_create
-Parameters:
-  address: "456 Oak Avenue, Springfield, IL 62702"
-  idempotency_key: "loc-bob-oak-456"
-Result:
-  location_id: "loc_oak456xyz"
-  lat: 39.7995
-  lng: -89.6440
-  billing: { meter: "geocode", units: 1, price: 0.05 }
+sqlite_execute: INSERT INTO customers (...) VALUES ('Bob Turner', ..., 55.00, 'weekly', '2026-09-03');   → 2
+sqlite_execute: INSERT INTO properties (customer_id, address, city, state, zip) VALUES (2, '456 Oak Avenue', ...);  → 2
+location_create: address "456 Oak Avenue, Springfield, IL 62702", idempotency_key "loc-property-2"  → loc_oak456xyz
+event_create:    name "Lawn Mowing - 456 Oak Avenue", location_id loc_oak456xyz, idempotency_key "event-property-2"  → evt_oak2
+sqlite_execute:  UPDATE properties SET zensched_location_id = 'loc_oak456xyz', zensched_event_id = 'evt_oak2' WHERE property_id = 2;
 ```
 
-```sql
-INSERT INTO properties (customer_id, address, city, state, zip, zensched_location_id)
-VALUES (2, '456 Oak Avenue', 'Springfield', 'IL', '62702', 'loc_oak456xyz');
-```
-
-## Adding a Worker
+## "Invite Mike at mike.worker@example.com and make him my default worker."
 
 ```
-Tool: worker_invite
-Parameters:
+worker_invite:
   email: "mike.worker@example.com"
   name: "Mike"
-  idempotency_key: "worker-mike-001"
-Result:
-  worker_id: "wrk_mike123"
-  invitation_sent: true
-  billing: { meter: "worker_invite", units: 1, price: 0.00 }  # First invite may be free
+  idempotency_key: "worker-mike.worker@example.com"
+  → worker_id: "wrk_mike123", invitation_sent: true
+    billing: { meter: "worker_invite", units: 1, price: 0.00 }
+
+sqlite_execute: UPDATE settings SET value = 'wrk_mike123' WHERE key = 'default_worker_id';
 ```
 
-**Worker action:** Mike receives an email, downloads the ZenSched mobile app (Android or iOS TestFlight), and activates his account.
+> Invited Mike. He'll get an email with a link to install the ZenSched app. I've set him as the default worker for scheduling.
 
-## Scheduling This Week's Jobs
-
-### Check Who is Due
-
-```sql
-SELECT 
-  c.customer_id,
-  c.customer_name,
-  p.property_id,
-  p.address,
-  p.zensched_location_id,
-  c.next_service_date,
-  c.service_rate
-FROM customers c
-JOIN properties p ON c.customer_id = p.customer_id
-WHERE c.next_service_date <= date('now', '+7 days')
-  AND c.is_active = 1
-ORDER BY c.next_service_date;
-```
-
-**Result:**
-- Alice Green: 123 Maple St, due 2026-09-02, $45
-- Bob Turner: 456 Oak Ave, due 2026-09-03, $55
-
-### Create Events and Shifts
-
-#### Alice's Lawn (Monday 9am)
+## "Schedule this week's lawns for Mike."
 
 ```
-Tool: event_create
-Parameters:
-  name: "Lawn Mowing - Alice Green"
-  location_id: "loc_map123abc"
-  idempotency_key: "event-alice-20260902"
-Result:
-  event_id: "evt_alice123"
-```
+sqlite_query: SELECT * FROM customers_due;
+  → 1 | Alice Green | ... | 2026-09-02 | property 1 | loc_map123abc | evt_maple1
+    2 | Bob Turner  | ... | 2026-09-03 | property 2 | loc_oak456xyz | evt_oak2
 
-```
-Tool: shift_create
-Parameters:
-  event_id: "evt_alice123"
+shift_create:
+  event_id: "evt_maple1"
   worker_id: "wrk_mike123"
   start_time: "2026-09-02T09:00:00-05:00"
-  end_time: "2026-09-02T10:00:00-05:00"
-  idempotency_key: "shift-1-2026w36"
-Result:
-  shift_id: "shft_alice001"
-  status: "scheduled"
-```
+  end_time:   "2026-09-02T10:00:00-05:00"
+  idempotency_key: "shift-property-1-20260902"
+  → shift_id: "shft_alice001", status: "scheduled"
 
-**Worker notification:** Mike receives a push notification on his mobile app.
-
-#### Bob's Lawn (Wednesday 10am)
-
-```
-Tool: event_create
-Parameters:
-  name: "Lawn Mowing - Bob Turner"
-  location_id: "loc_oak456xyz"
-  idempotency_key: "event-bob-20260903"
-Result:
-  event_id: "evt_bob123"
-```
-
-```
-Tool: shift_create
-Parameters:
-  event_id: "evt_bob123"
+shift_create:
+  event_id: "evt_oak2"
   worker_id: "wrk_mike123"
-  start_time: "2026-09-03T10:00:00-05:00"
-  end_time: "2026-09-03T11:00:00-05:00"
-  idempotency_key: "shift-2-2026w36"
-Result:
-  shift_id: "shft_bob001"
-  status: "scheduled"
+  start_time: "2026-09-03T09:00:00-05:00"
+  end_time:   "2026-09-03T10:00:00-05:00"
+  idempotency_key: "shift-property-2-20260903"
+  → shift_id: "shft_bob001", status: "scheduled"
 ```
 
-## Worker Completes the Jobs
+> Scheduled 2 lawns for Mike this week: Alice Green, 123 Maple St (Tue 9/2 9:00–10:00) and Bob Turner, 456 Oak Ave (Wed 9/3 9:00–10:00). Mike's been notified in the app.
 
-Mike uses the ZenSched mobile app to:
-1. Check in when arriving at 123 Maple St (GPS verified)
-2. Complete the work, take a photo
-3. Check out
-4. Repeat for 456 Oak Ave
+Nothing is written to SQLite here. If the owner asks "schedule this week" again, the identical idempotency keys make ZenSched return the same two shifts instead of creating duplicates.
 
-## Pulling Timesheets
+## Mike does the work
 
-### Check Shift Status
+In the ZenSched app: checks in at 123 Maple St (GPS verified), mows, takes a photo, checks out. Same at 456 Oak Ave the next day.
+
+## "Record what Mike finished this week."
 
 ```
-Tool: shift_status
-Parameters:
-  shift_id: "shft_alice001"
-Result:
-  status: "completed"
-  actual_start: "2026-09-02T09:05:00Z"
-  actual_end: "2026-09-02T09:52:00Z"
-  duration_hours: 0.78
-```
-
-```
-Tool: shift_status
-Parameters:
-  shift_id: "shft_bob001"
-Result:
-  status: "completed"
-  actual_start: "2026-09-03T10:03:00Z"
-  actual_end: "2026-09-03T11:15:00Z"
-  duration_hours: 1.20
-```
-
-### Export Weekly Timesheet
-
-```
-Tool: timesheet_export
-Parameters:
+timesheet_export:
   mode: "hours"
   start_date: "2026-09-01"
   end_date: "2026-09-07"
-Result:
-  workers:
-    - worker_id: "wrk_mike123"
-      name: "Mike"
-      shifts:
-        - shift_id: "shft_alice001"
-          date: "2026-09-02"
-          hours: 0.78
-        - shift_id: "shft_bob001"
-          date: "2026-09-03"
-          hours: 1.20
-      total_hours: 1.98
-  billing: { meter: "timesheet_export_hours", units: 0, price: 0.00 }  # Free mode
+  → workers: [ { worker_id: "wrk_mike123", shifts: [
+        { shift_id: "shft_alice001", date: "2026-09-02", hours: 0.78 },
+        { shift_id: "shft_bob001",   date: "2026-09-03", hours: 1.20 } ], total_hours: 1.98 } ]
+    billing: { meter: "timesheet_export_hours", units: 0, price: 0.00 }
+
+sqlite_query: SELECT zensched_shift_id FROM jobs WHERE zensched_shift_id IN ('shft_alice001', 'shft_bob001');
+  → (none; not yet recorded)
+
+sqlite_query: SELECT p.property_id, p.customer_id, c.service_rate FROM properties p JOIN customers c USING (customer_id) WHERE p.zensched_event_id = 'evt_maple1';
+  → 1, 1, 45.00
+
+sqlite_execute:
+  INSERT INTO jobs (customer_id, property_id, completed_date, amount, zensched_shift_id, zensched_event_id, zensched_worker_id, duration_hours)
+  VALUES (1, 1, '2026-09-02', 45.00, 'shft_alice001', 'evt_maple1', 'wrk_mike123', 0.78);
+
+sqlite_execute:
+  INSERT INTO jobs (customer_id, property_id, completed_date, amount, zensched_shift_id, zensched_event_id, zensched_worker_id, duration_hours)
+  VALUES (2, 2, '2026-09-03', 55.00, 'shft_bob001', 'evt_oak2', 'wrk_mike123', 1.20);
 ```
 
-## Recording Jobs Locally
+The `advance_service_date_on_job` trigger fires on each insert. No `UPDATE customers` needed:
 
-```sql
-INSERT INTO jobs (customer_id, property_id, completed_date, amount, zensched_shift_id, zensched_event_id, zensched_worker_id, duration_hours)
-VALUES 
-  (1, 1, '2026-09-02', 45.00, 'shft_alice001', 'evt_alice123', 'wrk_mike123', 0.78),
-  (2, 2, '2026-09-03', 55.00, 'shft_bob001', 'evt_bob123', 'wrk_mike123', 1.20);
+```
+sqlite_query: SELECT customer_name, last_service_date, next_service_date FROM customers;
+  → Alice Green | 2026-09-02 | 2026-09-16   (biweekly, +14)
+    Bob Turner  | 2026-09-03 | 2026-09-10   (weekly, +7)
 ```
 
-```sql
-UPDATE customers SET next_service_date = date('2026-09-02', '+14 days') WHERE customer_id = 1;
-UPDATE customers SET next_service_date = date('2026-09-03', '+7 days') WHERE customer_id = 2;
+> Recorded 2 jobs: Alice (Tue, 47 min) and Bob (Wed, 1h 12m). Alice is next due Tue 9/16, Bob next Wed 9/10.
+
+## "Draft invoices for everyone with uninvoiced work."
+
+```
+sqlite_query: SELECT * FROM jobs_to_invoice;
+  → Alice Green | 1 job | 45.00
+    Bob Turner  | 1 job | 55.00
+
+sqlite_execute:
+  INSERT INTO invoices (customer_id, invoice_date, due_date, total_amount, line_items)
+  SELECT j.customer_id, date('now'),
+         date('now', '+' || (SELECT value FROM settings WHERE key = 'invoice_due_days') || ' days'),
+         SUM(j.amount),
+         json_group_array(json_object('job_id', j.job_id, 'date', j.completed_date, 'amount', j.amount, 'shift_id', j.zensched_shift_id))
+  FROM jobs j WHERE j.invoiced = 0 AND j.customer_id = 1 GROUP BY j.customer_id;
+
+sqlite_execute: UPDATE jobs SET invoiced = 1 WHERE invoiced = 0 AND customer_id = 1;
+sqlite_query:   SELECT invoice_number, invoice_date, due_date, total_amount FROM invoices WHERE customer_id = 1 ORDER BY invoice_id DESC LIMIT 1;
+  → INV-2026-0001 | 2026-09-05 | 2026-09-19 | 45.00     (number assigned by trigger)
+
+(same three statements for customer 2 → INV-2026-0002, 55.00)
 ```
 
-## Drafting Invoices
+The agent then writes the invoices out as text:
 
-### Invoice for Alice (Biweekly Customer)
+> Here are your two invoices. Paste each into an email.
+>
+> ```
+> Green Lawn Mowing Co
+> Invoice INV-2026-0001
+> To: Alice Green (alice@example.com)
+> Date: Sep 5, 2026    Due: Sep 19, 2026
+>
+>   Sep 2, 2026   Lawn mowing, 123 Maple Street        $45.00
+>
+> Total due: $45.00
+> ```
+>
+> ```
+> Green Lawn Mowing Co
+> Invoice INV-2026-0002
+> To: Bob Turner (bob@example.com)
+> Date: Sep 5, 2026    Due: Sep 19, 2026
+>
+>   Sep 3, 2026   Lawn mowing, 456 Oak Avenue          $55.00
+>
+> Total due: $55.00
+> ```
+>
+> Say "sent" when they're out and I'll note the date.
 
-```sql
-INSERT INTO invoices (customer_id, invoice_number, invoice_date, due_date, total_amount, line_items)
-VALUES (
-  1,
-  'INV-2026-001',
-  '2026-09-02',
-  '2026-09-16',
-  45.00,
-  json_array(json_object('job_id', 1, 'date', '2026-09-02', 'amount', 45.00, 'shift_id', 'shft_alice001'))
-);
+## "Sent. And Alice already paid."
 
-UPDATE jobs SET invoiced = 1 WHERE job_id = 1;
+```
+sqlite_execute: UPDATE invoices SET sent_date = date('now') WHERE invoice_number IN ('INV-2026-0001', 'INV-2026-0002');
+sqlite_execute: UPDATE invoices SET paid = 1, paid_date = date('now') WHERE invoice_number = 'INV-2026-0001';
 ```
 
-### Invoice for Bob (Weekly Customer)
+> Marked both sent and INV-2026-0001 paid. Bob's $55 (INV-2026-0002) is outstanding, due Sep 19.
 
-```sql
-INSERT INTO invoices (customer_id, invoice_number, invoice_date, due_date, total_amount, line_items)
-VALUES (
-  2,
-  'INV-2026-002',
-  '2026-09-03',
-  '2026-09-17',
-  55.00,
-  json_array(json_object('job_id', 2, 'date', '2026-09-03', 'amount', 55.00, 'shift_id', 'shft_bob001'))
-);
+## "Who owes me money?"
 
-UPDATE jobs SET invoiced = 1 WHERE job_id = 2;
+```
+sqlite_query: SELECT * FROM invoices_outstanding;
+  → INV-2026-0002 | Bob Turner | due 2026-09-19 | 55.00 | overdue 0
 ```
 
-## Summary
+> One open invoice: Bob Turner, $55, due Sep 19 (not overdue yet).
 
-**Workflow Complete:**
-- ✓ Created ZenSched organization
-- ✓ Added 2 customer properties with geocoded locations
-- ✓ Invited 1 worker
-- ✓ Scheduled 2 shifts for this week
-- ✓ Worker completed jobs via mobile app
-- ✓ Pulled verified timesheets from ZenSched
-- ✓ Recorded jobs in local database
-- ✓ Generated 2 invoices
+## Summary of who stored what
 
-**Key Takeaway:** ZenSched handled all live scheduling, GPS verification, and time tracking. Local SQLite only stored CRM data and invoice records.
+| Thing | Where | Why |
+|---|---|---|
+| Alice's address, rate, cadence, next due date | SQLite | CRM; ZenSched does not model pricing or recurrence |
+| Alice's GPS location and "Lawn Mowing" event | ZenSched (IDs in SQLite) | Needed for shifts and geofenced check-in |
+| Mike, his invite, his app | ZenSched (ID in `settings`) | Workforce and notifications |
+| This week's two shifts | ZenSched only | Live schedule; never copied |
+| GPS punches, actual hours | ZenSched only | Verified record; queried via `timesheet_export` |
+| Two `jobs` rows referencing the shift IDs | SQLite | Billing needs a durable "this visit is billable" record |
+| Two invoices, one paid | SQLite | Billing |

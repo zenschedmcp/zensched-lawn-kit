@@ -1,23 +1,22 @@
 # Quickstart
 
-Get up and running in 5 minutes.
+Setup is about 15 minutes, once. After that everything is plain English to your AI. Each step below tells you what to do and, where relevant, exactly what to type to the AI.
 
-## 1. Get Your ZenSched Key
+You need: Claude Desktop (or Cursor) and [Node.js LTS](https://nodejs.org/) installed. Nothing else.
 
-In your AI tool (Claude, Cursor, etc.), run:
+## 1. Make a data folder
 
-```
-zensched_guide
-account_create(org_name="My Lawn Co")
-```
+Create a folder such as `C:\Users\YourName\lawn-ops` (Windows) or `/Users/yourname/lawn-ops` (Mac). Note the full path.
 
-Save the returned `zsc_` key.
+## 2. Add the two tools to your AI's config
 
-## 2. Add MCP Server
+Open the config file:
 
-**Claude Desktop — Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **Claude Desktop, Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **Claude Desktop, Mac:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Cursor:** Settings → MCP → Add new global MCP server
 
-**Claude Desktop — Mac:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+Paste this in and fix only the `SQLITE_PATH` line to match your folder from step 1:
 
 ```json
 {
@@ -25,66 +24,70 @@ Save the returned `zsc_` key.
     "zensched": {
       "url": "https://mcp.zensched.com/mcp",
       "headers": { "Authorization": "Bearer zsc_your_key_here" }
+    },
+    "lawn-ops-db": {
+      "command": "npx",
+      "args": ["-y", "easy-sqlite-mcp"],
+      "env": { "SQLITE_PATH": "/Users/yourname/lawn-ops/lawn-ops.db" }
     }
   }
 }
 ```
 
-**Cursor (Windows & Mac):** Settings → MCP Servers → same config.
+- On Windows, double every backslash: `"C:\\Users\\YourName\\lawn-ops\\lawn-ops.db"`.
+- Leave `zsc_your_key_here` as it is. You get the real key in the next step.
 
-Restart your AI tool.
+Save, then **fully quit and reopen** the AI app.
 
-## 3. Initialize Database
+## 3. Create your ZenSched account
 
-```bash
-sqlite3 lawn-ops.db < schema.sql
-```
+Type to the AI:
 
-## 4. Add Your First Customer
+> Call zensched_guide, then account_create with org_name "My Lawn Co". Show me the zsc_ key.
 
-```sql
-INSERT INTO customers (customer_name, contact_email, service_rate, service_frequency, next_service_date)
-VALUES ('John Doe', 'john@example.com', 45.00, 'biweekly', '2026-09-10');
-```
+Copy the key into the config file in place of `zsc_your_key_here`. Save. Quit and reopen the app once more. (You can also ask the AI to call `account_use_key` with the key to continue right away, but update the file anyway so it sticks.)
 
-Then create the location in ZenSched:
+## 4. Create the database tables
 
-```
-location_create(address="123 Main St, City, ST 12345", idempotency_key="loc-john-1")
-```
+Copy the full contents of `schema.sql` and paste it into the chat with this line above it:
 
-Save the returned `location_id` in your properties table.
+> Create these tables in my lawn-ops database. Run each statement one at a time with the SQLite tool, then list the tables to confirm.
 
-## 5. Invite a Worker
+## 5. Give the AI its instructions
 
-```
-worker_invite(email="worker@example.com", name="Mike", idempotency_key="worker-1")
-```
+Paste `SKILL.md` into the AI as standing instructions (Claude Desktop: a Project's instructions; Cursor: a rule). Then:
 
-They'll download the mobile app and activate.
+> My business is Green Lawn Mowing Co in Springfield, IL, Central time. Save that to settings.
 
-## 6. Schedule a Job
+## 6. Add your first customer
 
-```
-event_create(name="Lawn Mowing", location_id="loc_abc123", idempotency_key="evt-1")
-shift_create(
-  event_id="evt_abc123",
-  worker_id="wrk_xyz789",
-  start_time="2026-09-10T09:00:00-05:00",
-  end_time="2026-09-10T10:00:00-05:00",
-  idempotency_key="shift-john-2026w37"
-)
-```
+> Add a customer: Alice Green, alice@example.com, 555-0101, 123 Maple Street, Springfield IL 62701. $45 per cut, every two weeks, first cut on 2026-09-10.
 
-Worker gets a push notification. Done!
+Behind the scenes the AI inserts the customer, calls `location_create` (geocode, $0.05, may trigger the $5 activation deposit the first time), calls `event_create` once for the property, and saves both IDs. You just see a confirmation.
 
-## Next Steps
+## 7. Invite your worker
 
-- Read `README.md` for full Windows & Mac setup
-- Check `SKILL.md` for agent prompts
-- Review `example-workflow.md` for complete workflow
+> Invite Mike at mike@example.com as a worker and make him my default.
 
-## Mobile Apps
+Mike gets an email, installs the app ([Android](https://play.google.com/store/apps/details?id=com.zensched.app) / [iOS TestFlight](https://testflight.apple.com/join/Wp51m5Yq)), and activates.
 
-- Android: [Google Play](https://play.google.com/store/apps/details?id=com.zensched.app)
-- iOS: [TestFlight](https://testflight.apple.com/join/Wp51m5Yq)
+## 8. Schedule the week
+
+> Schedule this week's lawns for Mike, starting at 9 am each day.
+
+The AI checks who is due, creates one shift per property on ZenSched, and summarizes. Mike gets a push notification for each.
+
+## 9. After the work is done
+
+> Record the jobs Mike finished this week, then draft invoices for anyone with uninvoiced work.
+
+The AI pulls completion from ZenSched, records each job (which automatically sets the next service date), creates invoice records, and writes out each invoice as text you can paste into an email.
+
+> Alice paid INV-2026-0001.
+
+Marks it paid.
+
+## What next
+
+- `README.md` for the full explanation, troubleshooting table, and developer notes
+- `example-workflow.md` to see the exact tool calls behind each step above
