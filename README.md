@@ -137,7 +137,7 @@ See `QUICKSTART.md` for the first-week walkthrough and `example-workflow.md` for
 ## Mobile app for workers
 
 - **Android:** [Google Play](https://play.google.com/store/apps/details?id=com.zensched.app)
-- **iOS:** [TestFlight](https://testflight.apple.com/join/Wp51m5Yq)
+- **iOS:** [App Store](https://apps.apple.com/us/app/zensched/id6800081657)
 
 When you invite a worker, they get an email, install the app, and can immediately see their shifts, check in and out with GPS verification, take photos, and complete forms.
 

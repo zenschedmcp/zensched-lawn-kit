@@ -69,7 +69,7 @@ Behind the scenes the AI inserts the customer, calls `location_create` (geocode,
 
 > Invite Mike at mike@example.com as a worker and make him my default.
 
-Mike gets an email, installs the app ([Android](https://play.google.com/store/apps/details?id=com.zensched.app) / [iOS TestFlight](https://testflight.apple.com/join/Wp51m5Yq)), and activates.
+Mike gets an email, installs the app ([Android](https://play.google.com/store/apps/details?id=com.zensched.app) / [App Store](https://apps.apple.com/us/app/zensched/id6800081657)), and activates.
 
 ## 8. Schedule the week
 
